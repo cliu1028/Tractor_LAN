@@ -427,9 +427,12 @@ namespace Duan.Xiugang.Tractor
         {
             if (AllOnline() && !ThisPlayer.isObserver && !ThisPlayer.isReplay && ThisPlayer.CurrentHandState.CurrentHandStep == HandStep.Playing)
             {
-                this.ThisPlayer_NotifyMessageEventHandler(new string[]{"游戏中途不允许退出","请完成此盘游戏后再退"});
-                e.Cancel = true;
-                return; 
+                DialogResult dialogResult = MessageBox.Show("游戏正在进行中，是否确定退出？", "是否确定退出", MessageBoxButtons.YesNo);
+                if (dialogResult == DialogResult.No)
+                {
+                    e.Cancel = true;
+                    return;
+                }
             }
             try
             {
@@ -2269,8 +2272,11 @@ namespace Duan.Xiugang.Tractor
             }
             if (AllOnline() && !ThisPlayer.isObserver && !ThisPlayer.isReplay && ThisPlayer.CurrentHandState.CurrentHandStep == HandStep.Playing)
             {
-                this.ThisPlayer_NotifyMessageEventHandler(new string[] { "游戏中途不允许退出", "请完成此盘游戏后再退" });
-                return;
+                DialogResult dialogResult = MessageBox.Show("游戏正在进行中，是否确定退出？", "是否确定退出", MessageBoxButtons.YesNo);
+                if (dialogResult == DialogResult.No)
+                {
+                    return;
+                }
             }
 
             ThisPlayer.ExitRoom(ThisPlayer.MyOwnId);
@@ -2426,11 +2432,7 @@ namespace Duan.Xiugang.Tractor
                     }
                     return true;
                 case Keys.S:
-                    if (ThisPlayer.isReplay)
-                    {
-                        this.btnPreviousTrick.PerformClick();
-                    }
-                    else if (this.btnPig.Visible)
+                    if (this.btnPig.Visible)
                     {
                         this.btnPig.PerformClick();
                     }
@@ -2441,27 +2443,38 @@ namespace Duan.Xiugang.Tractor
                         this.btnReady.PerformClick();
                     }
                     return true;
-                case Keys.F:
-                    if (ThisPlayer.isReplay)
+                case Keys.Left:
+                    if (ThisPlayer.isReplay && !this.cbbReplayDate.Focused && !this.cbbReplayFile.Focused)
+                    {
+                        this.btnPreviousTrick.PerformClick();
+                        return true;
+                    }
+                    break;
+                case Keys.Right:
+                    if (ThisPlayer.isReplay && !this.cbbReplayDate.Focused && !this.cbbReplayFile.Focused)
                     {
                         this.btnNextTrick.PerformClick();
+                        return true;
                     }
-                    return true;
-                case Keys.E:
-                    if (ThisPlayer.isReplay)
+                    break;
+                case Keys.Up:
+                    if (ThisPlayer.isReplay && !this.cbbReplayDate.Focused && !this.cbbReplayFile.Focused)
                     {
                         this.btnFirstTrick.PerformClick();
+                        return true;
                     }
-                    return true;
-                case Keys.D:
-                    if (ThisPlayer.isReplay)
+                    break;
+                case Keys.Down:
+                    if (ThisPlayer.isReplay && !this.cbbReplayDate.Focused && !this.cbbReplayFile.Focused)
                     {
                         this.btnLastTrick.PerformClick();
+                        return true;
                     }
-                    return true;
+                    break;
                 default:
-                    return base.ProcessCmdKey(ref msg, keyData);
+                    break;
             }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void btnRoomSetting_Click(object sender, EventArgs e)
