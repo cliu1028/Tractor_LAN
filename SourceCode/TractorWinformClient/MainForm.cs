@@ -431,8 +431,18 @@ namespace Duan.Xiugang.Tractor
                 if (dialogResult == DialogResult.No)
                 {
                     e.Cancel = true;
-                    return;
                 }
+                else
+                {
+                    try
+                    {
+                        ThisPlayer.MarkPlayerOffline(ThisPlayer.MyOwnId);
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+                return;
             }
             try
             {
@@ -1378,8 +1388,9 @@ namespace Duan.Xiugang.Tractor
             }
         }
 
-        private void ThisPlayer_RoomSettingUpdatedEventHandler(RoomSetting roomSetting, bool isRoomSettingModified)
+        private void ThisPlayer_RoomSettingUpdatedEventHandler(RoomSetting roomSetting, bool showMessage)
         {
+            bool isRoomSettingModified = this.ThisPlayer.CurrentRoomSetting == null || !this.ThisPlayer.CurrentRoomSetting.Equals(roomSetting);
             this.ThisPlayer.CurrentRoomSetting = roomSetting;
             if (this.ThisPlayer.CurrentRoomSetting.RoomOwner == this.ThisPlayer.MyOwnId)
             {
@@ -1389,7 +1400,10 @@ namespace Duan.Xiugang.Tractor
                 this.TeamUpToolStripMenuItem.Visible = true;
             }
             this.lblRoomName.Text = this.ThisPlayer.CurrentRoomSetting.RoomName;
-            this.DisplayRoomSetting(isRoomSettingModified);
+            if (showMessage)
+            {
+                this.DisplayRoomSetting(isRoomSettingModified);
+            }
         }
 
         private void ThisPlayer_ShowAllHandCardsEventHandler()
@@ -1862,13 +1876,19 @@ namespace Duan.Xiugang.Tractor
                 }
                 else if (m.Equals(CommonMethods.reenterRoomSignal))
                 {
-                    ThisPlayer.IsTryingReenter = true;
-                    this.btnEnterHall.Hide();
-                    this.btnReplay.Hide();
+                    if (!ThisPlayer.isObserver)
+                    {
+                        ThisPlayer.IsTryingReenter = true;
+                        this.btnEnterHall.Hide();
+                        this.btnReplay.Hide();
+                    }
                 }
                 else if (m.Equals(CommonMethods.resumeGameSignal))
                 {
-                    ThisPlayer.IsTryingResumeGame = true;
+                    if (!ThisPlayer.isObserver)
+                    {
+                        ThisPlayer.IsTryingResumeGame = true;
+                    }
                 }
                 else if (m.Contains("新游戏即将开始"))
                 {
@@ -2270,11 +2290,8 @@ namespace Duan.Xiugang.Tractor
             }
             if (AllOnline() && !ThisPlayer.isObserver && !ThisPlayer.isReplay && ThisPlayer.CurrentHandState.CurrentHandStep == HandStep.Playing)
             {
-                DialogResult dialogResult = MessageBox.Show("游戏正在进行中，是否确定退出？", "是否确定退出", MessageBoxButtons.YesNo);
-                if (dialogResult == DialogResult.No)
-                {
-                    return;
-                }
+                Application.Restart();
+                return;
             }
 
             ThisPlayer.ExitRoom(ThisPlayer.MyOwnId);
@@ -2624,47 +2641,49 @@ namespace Duan.Xiugang.Tractor
             }
             drawingFormHelper.DrawCenterImage();
 
+            if (trick.ShowedCards.Count == 1 && PlayerPosition[trick.Learder] == 1)
+            {
+                DrawDumpFailureMessage(trick);
+            }
+
             ThisPlayer.CurrentTrickState = trick;
             string curPlayer = trick.Learder;
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < trick.ShowedCards.Count; i++)
             {
-                ArrayList cardsList = new ArrayList(trick.ShowedCards[curPlayer]);
                 int position = PlayerPosition[curPlayer];
+                if (trick.ShowedCards.Count == 4)
+                {
+                    foreach (int card in trick.ShowedCards[curPlayer])
+                    {
+                        ThisPlayer.replayEntity.CurrentHandState.PlayerHoldingCards[PositionPlayer[position]].RemoveCard(card);
+                    }
+                }
+
+                ArrayList cardsList = new ArrayList(trick.ShowedCards[curPlayer]);
                 if (position == 1)
                 {
                     drawingFormHelper.DrawMySendedCardsAction(cardsList);
-                    foreach (int card in trick.ShowedCards[curPlayer])
-                    {
-                        ThisPlayer.CurrentPoker.RemoveCard(card);
-                    }
                     drawingFormHelper.DrawMyHandCards();
                 }
                 else if (position == 2)
                 {
                     drawingFormHelper.DrawNextUserSendedCardsAction(cardsList);
-                    foreach (int card in trick.ShowedCards[curPlayer])
-                    {
-                        ThisPlayer.replayEntity.CurrentHandState.PlayerHoldingCards[PositionPlayer[2]].RemoveCard(card);
-                    }
                 }
                 else if (position == 3)
                 {
                     drawingFormHelper.DrawFriendUserSendedCardsAction(cardsList);
-                    foreach (int card in trick.ShowedCards[curPlayer])
-                    {
-                        ThisPlayer.replayEntity.CurrentHandState.PlayerHoldingCards[PositionPlayer[3]].RemoveCard(card);
-                    }
                 }
                 else if (position == 4)
                 {
                     drawingFormHelper.DrawPreviousUserSendedCardsAction(cardsList);
-                    foreach (int card in trick.ShowedCards[curPlayer])
-                    {
-                        ThisPlayer.replayEntity.CurrentHandState.PlayerHoldingCards[PositionPlayer[4]].RemoveCard(card);
-                    }
                 }
                 Refresh();
                 curPlayer = ThisPlayer.CurrentGameState.GetNextPlayerAfterThePlayer(curPlayer).PlayerId;
+            }
+
+            if (trick.ShowedCards.Count == 1 && PlayerPosition[trick.Learder] != 1)
+            {
+                DrawDumpFailureMessage(trick);
             }
 
             drawAllOtherHandCards();
@@ -2684,6 +2703,19 @@ namespace Duan.Xiugang.Tractor
 
             Refresh();
 
+        }
+
+        private void DrawDumpFailureMessage(CurrentTrickState trick)
+        {
+            this.drawingFormHelper.DrawMessages(new string[] { 
+                    string.Format("玩家【{0}】", trick.Learder), 
+                    string.Format("甩牌{0}张失败", trick.ShowedCards[trick.Learder].Count), 
+                    string.Format("罚分：{0}", trick.ShowedCards[trick.Learder].Count * 10),
+                    "",
+                    "",
+                    "",
+                    ""
+                });
         }
 
         private void btnFirstTrick_Click(object sender, EventArgs e)
@@ -2734,38 +2766,16 @@ namespace Duan.Xiugang.Tractor
                     ThisPlayer.replayedTricks.Push(trick);
                     ThisPlayer.replayEntity.CurrentTrickStates.RemoveAt(0);
 
+                    // 甩牌失败
+                    if (trick.ShowedCards.Count == 1) continue;
+
                     string curPlayer = trick.Learder;
-                    for (int i = 0; i < 4; i++)
+                    for (int i = 0; i < trick.ShowedCards.Count; i++)
                     {
-                        ArrayList cardsList = new ArrayList(trick.ShowedCards[curPlayer]);
                         int position = PlayerPosition[curPlayer];
-                        if (position == 1)
+                        foreach (int card in trick.ShowedCards[curPlayer])
                         {
-                            foreach (int card in trick.ShowedCards[curPlayer])
-                            {
-                                ThisPlayer.CurrentPoker.RemoveCard(card);
-                            }
-                        }
-                        else if (position == 2)
-                        {
-                            foreach (int card in trick.ShowedCards[curPlayer])
-                            {
-                                ThisPlayer.replayEntity.CurrentHandState.PlayerHoldingCards[PositionPlayer[2]].RemoveCard(card);
-                            }
-                        }
-                        else if (position == 3)
-                        {
-                            foreach (int card in trick.ShowedCards[curPlayer])
-                            {
-                                ThisPlayer.replayEntity.CurrentHandState.PlayerHoldingCards[PositionPlayer[3]].RemoveCard(card);
-                            }
-                        }
-                        else if (position == 4)
-                        {
-                            foreach (int card in trick.ShowedCards[curPlayer])
-                            {
-                                ThisPlayer.replayEntity.CurrentHandState.PlayerHoldingCards[PositionPlayer[4]].RemoveCard(card);
-                            }
+                            ThisPlayer.replayEntity.CurrentHandState.PlayerHoldingCards[PositionPlayer[position]].RemoveCard(card);
                         }
                         curPlayer = ThisPlayer.CurrentGameState.GetNextPlayerAfterThePlayer(curPlayer).PlayerId;
                     }
@@ -2819,7 +2829,7 @@ namespace Duan.Xiugang.Tractor
             {
                 ThisPlayer.CurrentHandState.Score -= ThisPlayer.CurrentHandState.ScorePunishment + ThisPlayer.CurrentHandState.ScoreLast8CardsBase * ThisPlayer.CurrentHandState.ScoreLast8CardsMultiplier;
             }
-            else
+            else if (trick.ShowedCards.Count == 4)
             {
                 foreach (var entry in trick.ShowedCards)
                 {
@@ -2831,9 +2841,7 @@ namespace Duan.Xiugang.Tractor
 
                 if (!string.IsNullOrEmpty(trick.Winner))
                 {
-                    if (
-                        !ThisPlayer.CurrentGameState.ArePlayersInSameTeam(ThisPlayer.CurrentHandState.Starter,
-                                                                    trick.Winner))
+                    if (!ThisPlayer.CurrentGameState.ArePlayersInSameTeam(ThisPlayer.CurrentHandState.Starter, trick.Winner))
                     {
                         ThisPlayer.CurrentHandState.Score -= trick.Points;
                         //收集得分牌
