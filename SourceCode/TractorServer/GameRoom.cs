@@ -26,6 +26,11 @@ namespace TractorServer
         public string LogsByRoomFullFolder;
         public string ReplaysByRoomFullFolder;
         public System.Timers.Timer timerPingClients;
+        
+        // in milliseconds, allow for 1 second to perform clean up before ping again next time
+        // timeout configuration NetTcpBinding_ITractorHost sendTimeout only works for non-oneway methods
+        // for oneway methods, timeout is defaulted to 20 seconds
+        public int PingInterval = 6000;
 
         TractorHost tractorHost;
         public RoomState CurrentRoomState;
@@ -64,7 +69,7 @@ namespace TractorServer
         #region timer to ping clients
         private void SetTimer()
         {
-            timerPingClients = new System.Timers.Timer(5000);
+            timerPingClients = new System.Timers.Timer(PingInterval);
             timerPingClients.Elapsed += OnTimedEvent;
             timerPingClients.AutoReset = true;
         }
@@ -84,7 +89,7 @@ namespace TractorServer
                     playersToPing.Add(player.PlayerId);
                 }
             }
-            IPlayerInvokeForAll(PlayersProxy, playersToPing, "NotifyMessage", new List<object>() { new string[] { } });
+            IPlayerInvokeForAll(PlayersProxy, playersToPing, "PingClient", new List<object>() { });
         }
         #endregion timer to ping clients
 
@@ -716,12 +721,6 @@ namespace TractorServer
                 serverLocalCache.lastShowedCards = CurrentRoomState.CurrentTrickState.ShowedCards.ToDictionary(entry => entry.Key, entry => entry.Value.ToList());
                 serverLocalCache.lastLeader = CurrentRoomState.CurrentTrickState.Learder;
 
-                if (CurrentRoomState.CurrentHandState.LeftCardsCount == 0)
-                {
-                    //本局结束画面，更新最后一轮出的牌
-                    CurrentRoomState.CurrentTrickState.serverLocalCache = serverLocalCache;
-                    CurrentRoomState.CurrentTrickState.serverLocalCache.muteSound = true;
-                }
                 UpdatePlayerCurrentTrickState();
 
                 CurrentRoomState.CurrentHandState.LeftCardsCount -= currentTrickState.ShowedCards[lastestPlayer].Count;
@@ -794,6 +793,11 @@ namespace TractorServer
                     }
 
                     UpdatePlayersCurrentHandState();
+
+                    //本局结束画面，更新最后一轮出的牌
+                    CurrentRoomState.CurrentTrickState.serverLocalCache = serverLocalCache;
+                    CurrentRoomState.CurrentTrickState.serverLocalCache.muteSound = true;
+                    UpdatePlayerCurrentTrickState();
 
                     UpdateGameState();
 
@@ -1768,6 +1772,7 @@ namespace TractorServer
             List<string> badPlayerIDs = new List<string>();
             foreach (var playerID in playerIDs)
             {
+                if (!PlayersProxyToCall.ContainsKey(playerID)) continue;
                 string badPlayerID = IPlayerInvoke(playerID, PlayersProxyToCall[playerID], methodName, args, false);
                 if (!string.IsNullOrEmpty(badPlayerID))
                 {
