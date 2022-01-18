@@ -24,7 +24,7 @@ namespace Duan.Xiugang.Tractor.Objects
         void PlayerToggleIsRobot(string playerId);
 
         [OperationContract(IsOneWay = true)]
-        void PlayerSendEmoji(string playerId, int emojiType, int emojiIndex);
+        void PlayerSendEmoji(string playerId, int emojiType, int emojiIndex, bool isCenter);
 
         [OperationContract(IsOneWay = true)]
         void PlayerExitRoom(string playerId);
@@ -88,7 +88,7 @@ namespace Duan.Xiugang.Tractor.Objects
         void SaveRoomSetting(string playerId, RoomSetting roomSetting);
 
         //甩牌检查
-        [OperationContract]
-        ShowingCardsValidationResult ValidateDumpingCards(List<int> selectedCards, string playerId);
+        [OperationContract(IsOneWay = true)]
+        void ValidateDumpingCards(List<int> selectedCards, string playerId);
     }
 }

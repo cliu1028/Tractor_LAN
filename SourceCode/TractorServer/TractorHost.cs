@@ -355,12 +355,12 @@ namespace TractorServer
             }
         }
 
-        public void PlayerSendEmoji(string playerID, int emojiType, int emojiIndex)
+        public void PlayerSendEmoji(string playerID, int emojiType, int emojiIndex, bool isCenter)
         {
             if (this.SessionIDGameRoom.ContainsKey(playerID))
             {
                 GameRoom gameRoom = this.SessionIDGameRoom[playerID];
-                gameRoom.PublishEmoji(playerID, emojiType, emojiIndex);
+                gameRoom.PublishEmoji(playerID, emojiType, emojiIndex, isCenter);
             }
         }
 
@@ -393,14 +393,13 @@ namespace TractorServer
             }
         }
 
-        public ShowingCardsValidationResult ValidateDumpingCards(List<int> selectedCards, string playerId)
+        public void ValidateDumpingCards(List<int> selectedCards, string playerId)
         {
             if (this.SessionIDGameRoom.ContainsKey(playerId))
             {
                 GameRoom gameRoom = this.SessionIDGameRoom[playerId];
-                return gameRoom.ValidateDumpingCards(selectedCards, playerId);
+                gameRoom.ValidateDumpingCards(selectedCards, playerId);
             }
-            return new ShowingCardsValidationResult { ResultType = ShowingCardsValidationResultType.Unknown };
         }
 
         public void RefreshPlayersCurrentHandState(string playerId)

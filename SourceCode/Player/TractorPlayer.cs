@@ -32,7 +32,8 @@ namespace Duan.Xiugang.Tractor.Player
     public delegate void ObservePlayerByIDEventHandler();
     public delegate string CutCardShoeCardsEventHandler();
     public delegate void SpecialEndGameShouldAgreeEventHandler();
-    public delegate void NotifyEmojiEventHandler(string playerID, int emojiType, int emojiIndex);
+    public delegate void NotifyEmojiEventHandler(string playerID, int emojiType, int emojiIndex, bool isCenter);
+    public delegate void NotifyTryToDumpResultEventHandler(ShowingCardsValidationResult result);
 
     public delegate void DistributingLast8CardsEventHandler();
     public delegate void DiscardingLast8EventHandler();
@@ -98,6 +99,7 @@ namespace Duan.Xiugang.Tractor.Player
         public event CutCardShoeCardsEventHandler CutCardShoeCardsEvent; //旁观：选牌
         public event SpecialEndGameShouldAgreeEventHandler SpecialEndGameShouldAgreeEvent; //旁观：选牌
         public event NotifyEmojiEventHandler NotifyEmojiEvent; //表情包
+        public event NotifyTryToDumpResultEventHandler NotifyTryToDumpResultEvent;
 
         public event DistributingLast8CardsEventHandler DistributingLast8Cards;
         public event DiscardingLast8EventHandler DiscardingLast8;
@@ -206,9 +208,9 @@ namespace Duan.Xiugang.Tractor.Player
             _tractorHost.PlayerToggleIsRobot(this.PlayerId);
         }
 
-        public void SendEmoji(int emojiType, int emojiIndex)
+        public void SendEmoji(int emojiType, int emojiIndex, bool isCenter)
         {
-            _tractorHost.PlayerSendEmoji(this.PlayerId, emojiType, emojiIndex);
+            _tractorHost.PlayerSendEmoji(this.PlayerId, emojiType, emojiIndex, isCenter);
         }
 
         public void ExitRoom(string playerID)
@@ -292,10 +294,10 @@ namespace Duan.Xiugang.Tractor.Player
                 NotifyMessageEvent(msg);
         }
 
-        public void NotifyEmoji(string playerID, int emojiType, int emojiIndex)
+        public void NotifyEmoji(string playerID, int emojiType, int emojiIndex, bool isCenter)
         {
             if (NotifyEmojiEvent != null)
-                NotifyEmojiEvent(playerID, emojiType, emojiIndex);
+                NotifyEmojiEvent(playerID, emojiType, emojiIndex, isCenter);
         }
 
         public void NotifyStartTimer(int timerLength)
@@ -599,16 +601,21 @@ namespace Duan.Xiugang.Tractor.Player
             }
         }
 
-        public ShowingCardsValidationResult ValidateDumpingCards(string playerId, List<int> selectedCards)
+        public void ValidateDumpingCards(string playerId, List<int> selectedCards)
         {
+            _tractorHost.ValidateDumpingCards(selectedCards, this.PlayerId);
+        }
 
-            var result = _tractorHost.ValidateDumpingCards(selectedCards, this.PlayerId);
+        public void NotifyTryToDumpResult(ShowingCardsValidationResult result)
+        {
             if (result.ResultType != ShowingCardsValidationResultType.DumpingSuccess)
             {
-                _tractorHost.RefreshPlayersCurrentHandState(playerId);
+                _tractorHost.RefreshPlayersCurrentHandState(this.MyOwnId);
             }
-            
-            return result;
+            if (NotifyTryToDumpResultEvent != null)
+            {
+                NotifyTryToDumpResultEvent(result);
+            }
         }
 
 

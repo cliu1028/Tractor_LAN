@@ -26,7 +26,7 @@ namespace Duan.Xiugang.Tractor.Objects
 
         //表情包
         [OperationContract(IsOneWay = true)]
-        void NotifyEmoji(string playerID, int emojiType, int emojiIndex);
+        void NotifyEmoji(string playerID, int emojiType, int emojiIndex, bool isCenter);
 
         //广播倒计时
         [OperationContract(IsOneWay = true)]
@@ -95,6 +95,10 @@ namespace Duan.Xiugang.Tractor.Objects
         /// </summary>
         [OperationContract(IsOneWay = true)]
         void SpecialEndGameShouldAgree();
+
+        //甩牌检查返回结果
+        [OperationContract(IsOneWay = true)]
+        void NotifyTryToDumpResult(ShowingCardsValidationResult result);
 
         /// <summary>
         ///     切牌

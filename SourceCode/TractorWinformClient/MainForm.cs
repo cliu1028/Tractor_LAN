@@ -214,6 +214,7 @@ namespace Duan.Xiugang.Tractor
             ThisPlayer.DiscardingLast8 += ThisPlayer_DiscardingLast8;
             ThisPlayer.DumpingFail += ThisPlayer_DumpingFail;
             ThisPlayer.NotifyEmojiEvent += ThisPlayer_NotifyEmojiEventHandler;
+            ThisPlayer.NotifyTryToDumpResultEvent += ThisPlayer_NotifyTryToDumpResultEventHandler;
             SelectedCards = new List<int>();
             PlayerPosition = new Dictionary<string, int>();
             PositionPlayer = new Dictionary<int, string>();
@@ -781,37 +782,40 @@ namespace Duan.Xiugang.Tractor
                     //²ÁÈ¥Ð¡Öí
                     this.btnPig.Visible = false;
 
-                    ShowingCardsValidationResult result = ThisPlayer.ValidateDumpingCards(ThisPlayer.MyOwnId, SelectedCards);
-                    if (result.ResultType == ShowingCardsValidationResultType.DumpingSuccess) //Ë¦ÅÆ³É¹¦.
-                    {
-                        foreach (int card in SelectedCards)
-                        {
-                            ThisPlayer.CurrentPoker.RemoveCard(card);
-                        }
-                        ThisPlayer.ShowCards(ThisPlayer.MyOwnId, SelectedCards);
-
-                        drawingFormHelper.DrawMyHandCards();
-                        SelectedCards.Clear();
-                    }
-					//Ë¦ÅÆÊ§°Ü
-                    else
-                    {
-                        this.drawingFormHelper.DrawMessages(new string[] { string.Format("Ë¦ÅÆ{0}ÕÅÊ§°Ü", SelectedCards.Count), string.Format("·£·Ö£º{0}", SelectedCards.Count * 10) });
-                        //Ë¦ÅÆÊ§°Ü²¥·ÅÌáÊ¾Òô
-                        soundPlayerDumpFailure.Play(this.enableSound);
-
-                        Thread.Sleep(5000);
-                        foreach (int card in result.MustShowCardsForDumpingFail)
-                        {
-                            ThisPlayer.CurrentPoker.RemoveCard(card);
-                        }
-                        ThisPlayer.ShowCards(ThisPlayer.MyOwnId, result.MustShowCardsForDumpingFail);
-
-                        drawingFormHelper.DrawMyHandCards();
-                        SelectedCards = result.MustShowCardsForDumpingFail;
-                        SelectedCards.Clear();
-                    }
+                    ThisPlayer.ValidateDumpingCards(ThisPlayer.MyOwnId, SelectedCards);
                 }
+            }
+        }
+
+        private void ThisPlayer_NotifyTryToDumpResultEventHandler(ShowingCardsValidationResult result)
+        {
+            if (result.ResultType == ShowingCardsValidationResultType.DumpingSuccess) //Ë¦ÅÆ³É¹¦.
+            {
+                foreach (int card in SelectedCards)
+                {
+                    ThisPlayer.CurrentPoker.RemoveCard(card);
+                }
+                ThisPlayer.ShowCards(ThisPlayer.MyOwnId, SelectedCards);
+                drawingFormHelper.DrawMyHandCards();
+                SelectedCards.Clear();
+            }
+            //Ë¦ÅÆÊ§°Ü
+            else
+            {
+                this.drawingFormHelper.DrawMessages(new string[] { string.Format("Ë¦ÅÆ{0}ÕÅÊ§°Ü", SelectedCards.Count), string.Format("·£·Ö£º{0}", SelectedCards.Count * 10) });
+                //Ë¦ÅÆÊ§°Ü²¥·ÅÌáÊ¾Òô
+                soundPlayerDumpFailure.Play(this.enableSound);
+
+                Thread.Sleep(5000);
+                foreach (int card in result.MustShowCardsForDumpingFail)
+                {
+                    ThisPlayer.CurrentPoker.RemoveCard(card);
+                }
+                ThisPlayer.ShowCards(ThisPlayer.MyOwnId, result.MustShowCardsForDumpingFail);
+
+                drawingFormHelper.DrawMyHandCards();
+                SelectedCards = result.MustShowCardsForDumpingFail;
+                SelectedCards.Clear();
             }
         }
 
@@ -1927,6 +1931,12 @@ namespace Duan.Xiugang.Tractor
                 if (m.Contains("»ñÊ¤£¡"))
                 {
                     soundPlayerGameOver.Play(this.enableSound);
+
+                    // ²¥·ÅÑÌ»¨
+                    Bitmap[] emojiList = this.drawingFormHelper.emojiDict[EmojiType.Fireworks];
+                    int emojiListSize = emojiList.Length;
+                    int emojiRandomIndex = CommonMethods.RandomNext(emojiListSize);
+                    ThisPlayer.SendEmoji((int)EmojiType.Fireworks, emojiRandomIndex, true);
                 }
                 else if (m.Equals(CommonMethods.reenterRoomSignal))
                 {
@@ -1958,27 +1968,39 @@ namespace Duan.Xiugang.Tractor
             this.drawingFormHelper.DrawMessages(msgs);
         }
 
-        private void ThisPlayer_NotifyEmojiEventHandler(string playerID, int emojiType, int emojiIndex)
+        private void ThisPlayer_NotifyEmojiEventHandler(string playerID, int emojiType, int emojiIndex, bool isCenter)
         {
             var threadDrawEmoji = new Thread(() =>
             {
-                int position = PlayerPosition[playerID];
+                PictureBox pic;
+                int displayDuration;
+                if (isCenter)
+                {
+                    pic = this.fireworksPic;
+                    displayDuration = 5000;
+                }
+                else
+                {
+                    int position = PlayerPosition[playerID];
+                    pic = this.drawingFormHelper.emojiPictureBoxes[position - 1];
+                    displayDuration = 3000;
+                }
                 EmojiType emojiEnumType = (EmojiType)emojiType;
                 Bitmap[] emojiList = this.drawingFormHelper.emojiDict[emojiEnumType];
 
                 Invoke(new Action(() =>
                 {
-                    this.drawingFormHelper.emojiPictureBoxes[position - 1].Show();
-                    this.drawingFormHelper.emojiPictureBoxes[position - 1].BringToFront();
-                    this.drawingFormHelper.emojiPictureBoxes[position - 1].Image = emojiList[emojiIndex];
+                    pic.Show();
+                    pic.BringToFront();
+                    pic.Image = emojiList[emojiIndex];
                 }));
 
-                Thread.Sleep(3000);
+                Thread.Sleep(displayDuration);
                 if (this.IsDisposed) return;
                 Invoke(new Action(() =>
                 {
-                    this.drawingFormHelper.emojiPictureBoxes[position - 1].Hide();
-                    if (!ThisPlayer.isObserver && playerID == ThisPlayer.MyOwnId)
+                    pic.Hide();
+                    if (!isCenter && !ThisPlayer.isObserver && playerID == ThisPlayer.MyOwnId)
                     {
                         this.btnSendEmoji.Enabled = true;
                     }
@@ -2328,7 +2350,7 @@ namespace Duan.Xiugang.Tractor
             int emojiListSize = emojiList.Length;
             int emojiRandomIndex = CommonMethods.RandomNext(emojiListSize);
 
-            ThisPlayer.SendEmoji(this.cbbEmoji.SelectedIndex, emojiRandomIndex);
+            ThisPlayer.SendEmoji(this.cbbEmoji.SelectedIndex, emojiRandomIndex, false);
         }
 
         private void ToolStripMenuItemObserverNextPlayer_Click(object sender, EventArgs e)
