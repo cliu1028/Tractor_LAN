@@ -524,9 +524,9 @@ namespace Duan.Xiugang.Tractor
                 }
                 else if (e.Button == MouseButtons.Right) //右键
                 {
-                    if (!ThisPlayer.isObserver && 
+                    if (!ThisPlayer.isObserver &&
                         e.X >= (int)myCardsLocation[0] &&
-                        e.X <= ((int)myCardsLocation[myCardsLocation.Count - 1] + 71 * drawingFormHelper.scaleDividend / drawingFormHelper.scaleDivisor) && 
+                        e.X <= ((int)myCardsLocation[myCardsLocation.Count - 1] + 71 * drawingFormHelper.scaleDividend / drawingFormHelper.scaleDivisor) &&
                         e.Y >= 355 + drawingFormHelper.offsetY && e.Y < 472 + drawingFormHelper.offsetY + 96 * (drawingFormHelper.scaleDividend - drawingFormHelper.scaleDivisor) / drawingFormHelper.scaleDivisor)
                     {
                         int i = calculateRegionHelper.CalculateRightClickedRegion(e);
@@ -542,17 +542,23 @@ namespace Duan.Xiugang.Tractor
                             int clickedCardNumber = (int)myCardsNumber[i];
                             //响应右键的3种情况：
                             //1. 首出（默认）
-                            int selectMoreCount = i;
+                            int selectMoreCount = 0;
+                            for (int left = i - 1; left >= 0; left--)
+                            {
+                                if ((int)myCardsLocation[left] == (x - (i - left) * 12 * drawingFormHelper.scaleDividend / drawingFormHelper.scaleDivisor)) selectMoreCount++;
+                                else break;
+                            }
+
                             bool isLeader = ThisPlayer.CurrentTrickState.Learder == ThisPlayer.PlayerId;
                             if (ThisPlayer.CurrentHandState.CurrentHandStep == HandStep.DiscardingLast8Cards)
                             {
                                 //2. 埋底牌
-                                selectMoreCount = Math.Min(i, 8 - 1 - readyCount);
+                                selectMoreCount = Math.Min(selectMoreCount, 8 - 1 - readyCount);
                             }
                             else if (ThisPlayer.CurrentTrickState.LeadingCards != null && ThisPlayer.CurrentTrickState.LeadingCards.Count > 0)
                             {
                                 //3. 跟出
-                                selectMoreCount = Math.Min(i, ThisPlayer.CurrentTrickState.LeadingCards.Count - 1 - readyCount);
+                                selectMoreCount = Math.Min(selectMoreCount, ThisPlayer.CurrentTrickState.LeadingCards.Count - 1 - readyCount);
                             }
                             if (b)
                             {
@@ -560,52 +566,159 @@ namespace Duan.Xiugang.Tractor
                                 showingCardsCp.TrumpInt = (int)ThisPlayer.CurrentHandState.Trump;
                                 showingCardsCp.Rank = ThisPlayer.CurrentHandState.Rank;
 
-                                bool selectAll = false; //如果右键点的散牌，则向左选中所有本门花色的牌
-                                for (int j = 1; j <= selectMoreCount; j++)
-                                {
-                                    //如果候选牌是同一花色
-                                    if ((int)myCardsLocation[i - j] == (x - 12 * drawingFormHelper.scaleDividend / drawingFormHelper.scaleDivisor))
-                                    {
-                                        if (isLeader)
-                                        {
-                                            //第一个出，候选牌为对子，拖拉机
-                                            if (!selectAll)
-                                            {
-                                                int toAddCardNumber = (int)myCardsNumber[i - j];
-                                                int toAddCardNumberOnRight = (int)myCardsNumber[i - j + 1];
-                                                showingCardsCp.AddCard(toAddCardNumberOnRight);
-                                                showingCardsCp.AddCard(toAddCardNumber);
-                                            }
+                                List<int> cardsToDump = new List<int>();
+                                List<int> cardsToDumpCardNumber = new List<int>();
 
-                                            if (showingCardsCp.Count == 2 && (showingCardsCp.GetPairs().Count == 1) || //如果是一对
-                                                ((showingCardsCp.GetTractorOfAnySuit().Count > 1) &&
-                                                showingCardsCp.Count == showingCardsCp.GetTractorOfAnySuit().Count * 2))  //如果是拖拉机
+                                bool isClickedTrump = PokerHelper.IsTrump(clickedCardNumber, (Suit)showingCardsCp.TrumpInt, showingCardsCp.Rank);
+                                int maxCard = showingCardsCp.Rank == 12 ? 11 : 12;
+                                bool selectTopToDump = !isClickedTrump && (int)myCardsNumber[i] % 13 == maxCard || isClickedTrump && (int)myCardsNumber[i] == 53; //如果右键点的A或者大王，且满足甩多张的条件，则向左选中所有本门合理可甩的牌
+                                if (selectTopToDump)
+                                {
+                                    bool singleCardFound = false;
+                                    for (int j = 1; j <= selectMoreCount; j++)
+                                    {
+                                        int toAddCardNumber = (int)myCardsNumber[i - j];
+                                        int toAddCardNumberOnRight = (int)myCardsNumber[i - j + 1];
+                                        //如果候选牌是同一花色
+                                        if (PokerHelper.GetSuit(toAddCardNumber) == PokerHelper.GetSuit(clickedCardNumber) ||
+                                            PokerHelper.IsTrump(toAddCardNumber, (Suit)showingCardsCp.TrumpInt, showingCardsCp.Rank) && isClickedTrump)
+                                        {
+                                            if (isLeader)
                                             {
-                                                myCardIsReady[i - j] = b;
-                                                myCardIsReady[i - j + 1] = b;
-                                                x = x - 12 * drawingFormHelper.scaleDividend / drawingFormHelper.scaleDivisor;
-                                                j++;
-                                            }
-                                            else if (j == 1 || selectAll)
-                                            {
-                                                selectAll = true;
-                                                myCardIsReady[i - j] = b;
-                                            }
-                                            else
-                                            {
-                                                break;
+                                                bool isSingleCard = toAddCardNumber != toAddCardNumberOnRight;
+                                                if (isSingleCard)
+                                                {
+                                                    if (singleCardFound)
+                                                    {
+                                                        showingCardsCp.Clear();
+                                                        break;
+                                                    }
+                                                    else
+                                                    {
+                                                        singleCardFound = true;
+                                                    }
+                                                }
+                                                showingCardsCp.AddCard(toAddCardNumberOnRight);
+                                                cardsToDump.Add(i - j + 1);
+                                                cardsToDumpCardNumber.Add(toAddCardNumberOnRight);
+                                                showingCardsCp.AddCard(toAddCardNumberOnRight);
+
+                                                if (!isSingleCard)
+                                                {
+                                                    cardsToDump.Add(i - j);
+                                                    cardsToDumpCardNumber.Add(toAddCardNumberOnRight);
+                                                }
+
+                                                if (j > 1)
+                                                {
+                                                    int tractorCount = showingCardsCp.GetTractorOfAnySuit().Count;
+                                                    bool needToBreak = false;
+                                                    while (cardsToDumpCardNumber.Count > 0 && !(tractorCount > 1 && tractorCount * 2 == showingCardsCp.Count))
+                                                    {
+                                                        needToBreak = true;
+                                                        int totalCount = cardsToDumpCardNumber.Count;
+                                                        int cardNumToDel = cardsToDumpCardNumber[cardsToDumpCardNumber.Count - 1];
+                                                        showingCardsCp.RemoveCard(cardNumToDel);
+                                                        showingCardsCp.RemoveCard(cardNumToDel);
+
+                                                        cardsToDumpCardNumber.RemoveAt(totalCount - 1);
+                                                        cardsToDump.RemoveAt(totalCount - 1);
+
+                                                        if (cardsToDumpCardNumber.Count > 0 && cardsToDumpCardNumber[totalCount - 2] == cardNumToDel)
+                                                        {
+                                                            cardsToDumpCardNumber.RemoveAt(totalCount - 2);
+                                                            cardsToDump.RemoveAt(totalCount - 2);
+                                                        }
+                                                    }
+                                                    if (needToBreak)
+                                                    {
+                                                        break;
+                                                    }
+                                                }
+
+                                                if (!isSingleCard)
+                                                {
+                                                    j++;
+                                                }
+
+                                                //特殊情况处理，最后一个单张顶张进不到下个循环，须在上轮循环处理
+                                                if (j == selectMoreCount && !singleCardFound)
+                                                {
+                                                    toAddCardNumberOnRight = (int)myCardsNumber[i - j];
+                                                    showingCardsCp.AddCard(toAddCardNumberOnRight);
+                                                    showingCardsCp.AddCard(toAddCardNumberOnRight);
+                                                    int tractorCount = showingCardsCp.GetTractorOfAnySuit().Count;
+                                                    if (tractorCount > 1 && tractorCount * 2 == showingCardsCp.Count)
+                                                    {
+                                                        cardsToDump.Add(i - j);
+                                                    }
+                                                }
                                             }
                                         }
                                         else
                                         {
-                                            //埋底或者跟出
-                                            myCardIsReady[i - j] = b;
+                                            break;
                                         }
-                                        x = x - 12 * drawingFormHelper.scaleDividend / drawingFormHelper.scaleDivisor;
                                     }
-                                    else
+                                }
+
+                                if (cardsToDump.Count >= 2)
+                                {
+                                    foreach (int c in cardsToDump)
                                     {
-                                        break;
+                                        myCardIsReady[c] = b;
+                                    }
+                                }
+                                else
+                                {
+                                    showingCardsCp.Clear();
+                                    bool selectAll = false; //如果右键点的散牌，则向左选中所有本门花色的牌
+                                    for (int j = 1; j <= selectMoreCount; j++)
+                                    {
+                                        //如果候选牌是同一花色
+                                        if ((int)myCardsLocation[i - j] == (x - 12 * drawingFormHelper.scaleDividend / drawingFormHelper.scaleDivisor))
+                                        {
+                                            if (isLeader)
+                                            {
+                                                //第一个出，候选牌为对子，拖拉机
+                                                if (!selectAll)
+                                                {
+                                                    int toAddCardNumber = (int)myCardsNumber[i - j];
+                                                    int toAddCardNumberOnRight = (int)myCardsNumber[i - j + 1];
+                                                    showingCardsCp.AddCard(toAddCardNumberOnRight);
+                                                    showingCardsCp.AddCard(toAddCardNumber);
+                                                }
+
+                                                if (showingCardsCp.Count == 2 && (showingCardsCp.GetPairs().Count == 1) || //如果是一对
+                                                    ((showingCardsCp.GetTractorOfAnySuit().Count > 1) &&
+                                                    showingCardsCp.Count == showingCardsCp.GetTractorOfAnySuit().Count * 2))  //如果是拖拉机
+                                                {
+                                                    myCardIsReady[i - j] = b;
+                                                    myCardIsReady[i - j + 1] = b;
+                                                    x = x - 12 * drawingFormHelper.scaleDividend / drawingFormHelper.scaleDivisor;
+                                                    j++;
+                                                }
+                                                else if (j == 1 || selectAll)
+                                                {
+                                                    selectAll = true;
+                                                    myCardIsReady[i - j] = b;
+                                                }
+                                                else
+                                                {
+                                                    break;
+                                                }
+                                            }
+                                            else
+                                            {
+                                                //埋底或者跟出
+                                                myCardIsReady[i - j] = b;
+                                            }
+                                            x = x - 12 * drawingFormHelper.scaleDividend / drawingFormHelper.scaleDivisor;
+                                        }
+                                        else
+                                        {
+                                            break;
+                                        }
                                     }
                                 }
                             }
