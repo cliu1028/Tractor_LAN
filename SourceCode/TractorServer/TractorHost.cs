@@ -424,6 +424,19 @@ namespace TractorServer
             }
         }
 
+        //换座
+        public void SwapSeat(string playerId, int offset)
+        {
+            if (this.SessionIDGameRoom.ContainsKey(playerId))
+            {
+                GameRoom gameRoom = this.SessionIDGameRoom[playerId];
+                gameRoom.SwapSeat(playerId, offset);
+                Thread.Sleep(500);
+                Thread thr = new Thread(new ThreadStart(this.UpdateGameHall));
+                thr.Start();
+            }
+        }
+
         //旁观：选牌
         public void CardsReady(string playerId, ArrayList myCardIsReady)
         {
