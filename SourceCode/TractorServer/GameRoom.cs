@@ -38,6 +38,7 @@ namespace TractorServer
         public RoomState CurrentRoomState;
         public CardsShoe CardsShoe { get; set; }
         public ReplayEntity replayEntity;
+        public string cutInfoString;
 
         public Dictionary<string, IPlayer> PlayersProxy { get; set; }
         public Dictionary<string, IPlayer> ObserversProxy { get; set; }
@@ -501,20 +502,92 @@ namespace TractorServer
                     switch (CurrentRoomState.CurrentGameState.nextRestartID)
                     {
                         case GameState.RESTART_GAME:
-                            CleanupCaches();
-                            RestartGame(CurrentRoomState.CurrentHandState.Rank);
+                            this.prepareRESTART_GAME();
                             break;
                         case GameState.RESTART_CURRENT_HAND:
-                            RestartCurrentHand();
+                            log.Debug("restart current hand, starter: " + CurrentRoomState.CurrentHandState.Starter + " Rank: " + CommonMethods.GetNumberString(CurrentRoomState.CurrentHandState.Rank));
+                            this.prepareSTART_NEXT_HAND(CurrentRoomState.CurrentGameState.Players.Single(p => p != null && p.PlayerId == CurrentRoomState.CurrentHandState.Starter));
                             break;
                         case GameState.START_NEXT_HAND:
-                            CleanupCaches();
-                            StartNextHand(CurrentRoomState.CurrentGameState.startNextHandStarter);
+                            this.prepareSTART_NEXT_HAND(CurrentRoomState.CurrentGameState.startNextHandStarter);
                             break;
                         default:
                             break;
                     }
+
+                    //切牌
+                    this.preparePreStarter();
+                    IPlayerInvokeForAll(PlayersProxy, PlayersProxy.Keys.ToList(), "NotifyMessage", new List<object>() { new string[] { "等待玩家切牌：", playersFromStarter[3] } });
+                    if (ObserversProxy.Count > 0)
+                    {
+                        IPlayerInvokeForAll(ObserversProxy, ObserversProxy.Keys.ToList(), "NotifyMessage", new List<object>() { new string[] { "等待玩家切牌：", playersFromStarter[3] } });
+                    }
+
+                    PlayersProxy[playersFromStarter[3]].CutCardShoeCards();
                 }
+            }
+        }
+
+        private void preparePreStarter()
+        {
+            //保证庄家首先摸牌
+            starterID = CurrentRoomState.CurrentGameState.Players[0].PlayerId;
+            if (!string.IsNullOrEmpty(CurrentRoomState.CurrentHandState.Starter)) starterID = CurrentRoomState.CurrentHandState.Starter;
+            playersFromStarter = new string[4];
+            playersFromStarter[0] = starterID;
+            for (int x = 1; x < 4; x++)
+            {
+                playersFromStarter[x] = CurrentRoomState.CurrentGameState.GetNextPlayerAfterThePlayer(playersFromStarter[x - 1]).PlayerId;
+            }
+        }
+
+        private void prepareRESTART_GAME()
+        {
+            CleanupCaches();
+
+            int curRank = CurrentRoomState.CurrentHandState.Rank;
+            curRankDC = curRank;
+            this.isGameOver = false;
+            log.Debug("restart game with current set rank: " + CommonMethods.GetNumberString(curRank));
+
+            CurrentRoomState.CurrentHandState = new CurrentHandState(CurrentRoomState.CurrentGameState);
+            CurrentRoomState.CurrentHandState.Rank = curRank;
+            CurrentRoomState.CurrentHandState.LeftCardsCount = TractorRules.GetCardNumberofEachPlayer(CurrentRoomState.CurrentGameState.Players.Count);
+            CurrentRoomState.CurrentHandState.IsFirstHand = true;
+            UpdatePlayersCurrentHandState();
+        }
+
+        private void prepareSTART_NEXT_HAND(PlayerEntity nextStarter)
+        {
+            CleanupCaches();
+
+            this.isGameOver = false;
+
+            UpdateGameState();
+            CurrentRoomState.CurrentHandState = new CurrentHandState(CurrentRoomState.CurrentGameState);
+            CurrentRoomState.CurrentHandState.Starter = nextStarter.PlayerId;
+            CurrentRoomState.CurrentHandState.Rank = nextStarter.Rank;
+            CurrentRoomState.CurrentHandState.LeftCardsCount = TractorRules.GetCardNumberofEachPlayer(CurrentRoomState.CurrentGameState.Players.Count);
+
+            log.Debug("start next hand, starter: " + CurrentRoomState.CurrentHandState.Starter + " Rank: " + CommonMethods.GetNumberString(CurrentRoomState.CurrentHandState.Rank));
+
+            UpdatePlayersCurrentHandState();
+        }
+
+        public void PlayerHasCutCards(string cutInfo)
+        {
+            this.cutInfoString = cutInfo;
+            switch (CurrentRoomState.CurrentGameState.nextRestartID)
+            {
+                case GameState.RESTART_GAME:
+                    RestartGame();
+                    break;
+                case GameState.RESTART_CURRENT_HAND:
+                case GameState.START_NEXT_HAND:
+                    StartNextHand();
+                    break;
+                default:
+                    break;
             }
         }
 
@@ -880,7 +953,9 @@ namespace TractorServer
                         var threadStartNextHand = new Thread(() =>
                         {
                             Thread.Sleep(3000);
-                            StartNextHand(CurrentRoomState.CurrentGameState.startNextHandStarter);
+                            this.prepareSTART_NEXT_HAND(CurrentRoomState.CurrentGameState.startNextHandStarter);
+                            this.preparePreStarter();
+                            StartNextHand();
                         });
                         threadStartNextHand.Start();                        
                         return;
@@ -1009,6 +1084,7 @@ namespace TractorServer
         private void CleanupCaches()
         {
             //清空缓存
+            this.cutInfoString = string.Empty;
             this.serverLocalCache = new ServerLocalCache();
             CurrentRoomState.CurrentTrickState.Learder = string.Empty;
             CurrentRoomState.CurrentTrickState.ShowedCards.Clear();
@@ -1471,18 +1547,8 @@ namespace TractorServer
 
         #region Host Action
         int curRankDC;
-        public void RestartGame(int curRank)
+        public void RestartGame()
         {
-            curRankDC = curRank;
-            this.isGameOver = false;
-            log.Debug("restart game with current set rank: " + CommonMethods.GetNumberString(curRank));
-
-            CurrentRoomState.CurrentHandState = new CurrentHandState(CurrentRoomState.CurrentGameState);
-            CurrentRoomState.CurrentHandState.Rank = curRank;
-            CurrentRoomState.CurrentHandState.LeftCardsCount = TractorRules.GetCardNumberofEachPlayer(CurrentRoomState.CurrentGameState.Players.Count);
-            CurrentRoomState.CurrentHandState.IsFirstHand = true;
-            UpdatePlayersCurrentHandState();
-
             if (DistributeCards()) return;
         }
         public void RestartGamePart2()
@@ -1513,30 +1579,16 @@ namespace TractorServer
             if (IsAllOnline())
             {
                 if (CurrentRoomState.CurrentHandState.Trump != Suit.None) DistributeLast8Cards();
-                else RestartGame(curRank);
+                else
+                {
+                    this.prepareRESTART_GAME();
+                    RestartGame();
+                }
             }
         }
 
-        public void RestartCurrentHand()
+        public void StartNextHand()
         {
-            log.Debug("restart current hand, starter: " + CurrentRoomState.CurrentHandState.Starter + " Rank: " + CommonMethods.GetNumberString(CurrentRoomState.CurrentHandState.Rank));
-            StartNextHand(CurrentRoomState.CurrentGameState.Players.Single(p => p != null && p.PlayerId == CurrentRoomState.CurrentHandState.Starter));
-        }
-
-        public void StartNextHand(PlayerEntity nextStarter)
-        {
-            this.isGameOver = false;
-
-            UpdateGameState();
-            CurrentRoomState.CurrentHandState = new CurrentHandState(CurrentRoomState.CurrentGameState);
-            CurrentRoomState.CurrentHandState.Starter = nextStarter.PlayerId;
-            CurrentRoomState.CurrentHandState.Rank = nextStarter.Rank;
-            CurrentRoomState.CurrentHandState.LeftCardsCount = TractorRules.GetCardNumberofEachPlayer(CurrentRoomState.CurrentGameState.Players.Count);
-
-            log.Debug("start next hand, starter: " + CurrentRoomState.CurrentHandState.Starter + " Rank: " + CommonMethods.GetNumberString(CurrentRoomState.CurrentHandState.Rank));
-
-            UpdatePlayersCurrentHandState();
-
             if (DistributeCards()) return;
         }
 
@@ -1581,7 +1633,6 @@ namespace TractorServer
         System.Timers.Timer timerDC;
         Dictionary<string, StringBuilder> LogList;
         string starterID;
-        string preStarterID;
         int cardDistributedCount;
         string[] playersFromStarter;
         int cardNumberofEachPlayer;
@@ -1600,11 +1651,6 @@ namespace TractorServer
                 }
             }
 
-            //保证庄家首先摸牌
-            starterID = CurrentRoomState.CurrentGameState.Players[0].PlayerId;
-            preStarterID = CurrentRoomState.CurrentGameState.Players[3].PlayerId;
-            if (!string.IsNullOrEmpty(CurrentRoomState.CurrentHandState.Starter)) starterID = CurrentRoomState.CurrentHandState.Starter;
-
             if (this.CardsShoe.IsCardsRestored)
             {
                 this.CardsShoe.IsCardsRestored = false;
@@ -1612,22 +1658,15 @@ namespace TractorServer
             else
             {
                 ShuffleCardsWithRNGCsp(this.CardsShoe);
-                //切牌
-                IPlayerInvokeForAll(PlayersProxy, PlayersProxy.Keys.ToList(), "NotifyMessage", new List<object>() { new string[] { "玩家切牌：", preStarterID } });
-                if (ObserversProxy.Count > 0)
-                {
-                    IPlayerInvokeForAll(ObserversProxy, ObserversProxy.Keys.ToList(), "NotifyMessage", new List<object>() { new string[] { "玩家切牌：", preStarterID } });
-                }
-
-                string cutInfoString = PlayersProxy[preStarterID].CutCardShoeCards();
+                // 获取切牌信息
                 string[] cutInfos;
-                if (string.IsNullOrEmpty(cutInfoString))
+                if (string.IsNullOrEmpty(this.cutInfoString))
                 {
                     cutInfos = new string[] { "取消", "0" };
                 }
                 else
                 {
-                    cutInfos = cutInfoString.Split(',');
+                    cutInfos = this.cutInfoString.Split(',');
                 }
                 CutCards(this.CardsShoe, Int32.Parse(cutInfos[1]));
 
@@ -1637,10 +1676,10 @@ namespace TractorServer
                     cutMsg = string.Format("{0}{1}张", cutInfos[0], cutInfos[1]);
                 }
 
-                IPlayerInvokeForAll(PlayersProxy, PlayersProxy.Keys.ToList(), "NotifyMessage", new List<object>() { new string[] { string.Format("玩家切牌：{0}", cutMsg), preStarterID } });
+                IPlayerInvokeForAll(PlayersProxy, PlayersProxy.Keys.ToList(), "NotifyMessage", new List<object>() { new string[] { string.Format("玩家切牌：{0}", cutMsg), playersFromStarter[3] } });
                 if (ObserversProxy.Count > 0)
                 {
-                    IPlayerInvokeForAll(ObserversProxy, ObserversProxy.Keys.ToList(), "NotifyMessage", new List<object>() { new string[] { string.Format("玩家切牌：{0}", cutMsg), preStarterID } });
+                    IPlayerInvokeForAll(ObserversProxy, ObserversProxy.Keys.ToList(), "NotifyMessage", new List<object>() { new string[] { string.Format("玩家切牌：{0}", cutMsg), playersFromStarter[3] } });
                 }
                 PublishStartTimer(2);
                 //加一秒缓冲时间，让客户端倒计时完成
@@ -1659,13 +1698,6 @@ namespace TractorServer
             }
 
             // Setting up Timer for distributing cards
-            playersFromStarter = new string[4];
-            playersFromStarter[0] = starterID;
-            for (int x = 1; x < 4; x++)
-            {
-                playersFromStarter[x] = CurrentRoomState.CurrentGameState.GetNextPlayerAfterThePlayer(playersFromStarter[x - 1]).PlayerId;
-                if (x == 3) preStarterID = playersFromStarter[x];
-            }
             cardNumberofEachPlayer = TractorRules.GetCardNumberofEachPlayer(CurrentRoomState.CurrentGameState.Players.Count);
             cardDistributedCount = 0;
             LogList = new Dictionary<string, StringBuilder>();
@@ -1694,8 +1726,9 @@ namespace TractorServer
                 return;
             }
 
-            foreach (var playerID in playersFromStarter)
+            for (int i = 0; i < playersFromStarter.Length; i++)
             {
+                string playerID = playersFromStarter[i];
                 if (!PlayersProxy.ContainsKey(playerID))
                 {
                     timerDC.Stop();

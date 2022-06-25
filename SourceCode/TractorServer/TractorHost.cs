@@ -217,8 +217,14 @@ namespace TractorServer
                 case WebSocketObjects.WebSocketMessageType_RandomSeat:
                     this.TeamUp(playerID);
                     break;
+                case WebSocketObjects.WebSocketMessageType_SwapSeat:
+                    this.SwapSeatWS(playerID, content);
+                    break;
                 case WebSocketObjects.WebSocketMessageType_SendEmoji:
                     this.PlayerSendEmojiWS(playerID, content);
+                    break;
+                case WebSocketObjects.WebSocketMessageType_PlayerHasCutCards:
+                    this.PlayerHasCutCards(playerID, content);
                     break;
                 default:
                     break;
@@ -533,6 +539,15 @@ namespace TractorServer
             }
         }
 
+        public void PlayerHasCutCards(string playerID, string cutInfo)
+        {
+            if (this.SessionIDGameRoom.ContainsKey(playerID))
+            {
+                GameRoom gameRoom = this.SessionIDGameRoom[playerID];
+                gameRoom.PlayerHasCutCards(cutInfo);
+            }
+        }
+
         public void PlayerToggleIsRobot(string playerID)
         {
             if (this.SessionIDGameRoom.ContainsKey(playerID))
@@ -663,6 +678,11 @@ namespace TractorServer
                 Thread thr = new Thread(new ThreadStart(this.UpdateGameHall));
                 thr.Start();
             }
+        }
+        public void SwapSeatWS(string playerId, string content)
+        {
+            int offset = Int32.Parse(content);
+            this.SwapSeat(playerId, offset);
         }
 
         //旁观：选牌
