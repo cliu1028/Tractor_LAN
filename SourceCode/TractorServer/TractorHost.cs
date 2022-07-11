@@ -31,6 +31,8 @@ namespace TractorServer
         internal bool AllowSameIP = false;
         internal string Webport = "";
         internal string WebportTls = "";
+        internal string CertsFoler = "certs";
+        internal string CertsFile = "iceburg.duckdns.org.pfx";
         public string KeyMaxRoom = "maxRoom";
         public string KeyAllowSameIP = "allowSameIP";
         public string KeyWebport = "webport";
@@ -141,7 +143,7 @@ namespace TractorServer
                 var server = new WebSocketServer("wss://0.0.0.0:" + WebportTls);
                 server.EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12;
                 string rootFolder = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                string certFile = string.Format("{0}\\iceburg.duckdns.org.pfx", rootFolder);
+                string certFile = string.Format("{0}\\{1}\\{2}", rootFolder, CertsFoler, CertsFile);
                 server.Certificate = new X509Certificate2(certFile);
                 server.Start(socket =>
                 {
