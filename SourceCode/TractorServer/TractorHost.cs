@@ -14,6 +14,8 @@ using System.ServiceModel.Channels;
 using System.Configuration;
 using Fleck;
 using Newtonsoft.Json;
+using System.Security.Cryptography.X509Certificates;
+using System.Reflection;
 
 [assembly: log4net.Config.XmlConfigurator(Watch = true)]
 
@@ -28,9 +30,13 @@ namespace TractorServer
         internal int MaxRoom = 0;
         internal bool AllowSameIP = false;
         internal string Webport = "";
+        internal string WebportTls = "";
+        internal string CertsFoler = "certs";
+        internal string CertsFile = "iceburg.duckdns.org.pfx";
         public string KeyMaxRoom = "maxRoom";
         public string KeyAllowSameIP = "allowSameIP";
         public string KeyWebport = "webport";
+        public string KeyWebportTls = "webporttls";
         public string KeyIsFullDebug = "isFullDebug";
 
         public CardsShoe CardsShoe { get; set; }
@@ -55,6 +61,7 @@ namespace TractorServer
                 MaxRoom = (int)myreader.GetValue(KeyMaxRoom, typeof(int));
                 AllowSameIP = (bool)myreader.GetValue(KeyAllowSameIP, typeof(bool));
                 Webport = (string)myreader.GetValue(KeyWebport, typeof(string));
+                WebportTls = (string)myreader.GetValue(KeyWebportTls, typeof(string));
                 gameConfig.IsFullDebug = (bool)myreader.GetValue(KeyIsFullDebug, typeof(bool));
             }
             catch (Exception ex)
@@ -130,6 +137,62 @@ namespace TractorServer
                 });
             });
             threadStartHostWS.Start();
+
+            var threadStartHostWSS = new Thread(() =>
+            {
+                var server = new WebSocketServer("wss://0.0.0.0:" + WebportTls);
+                server.EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12;
+                string rootFolder = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                string certFile = string.Format("{0}\\{1}\\{2}", rootFolder, CertsFoler, CertsFile);
+                server.Certificate = new X509Certificate2(certFile);
+                server.Start(socket =>
+                {
+                    socket.OnOpen = () => Console.WriteLine("Open!");
+                    socket.OnClose = () =>
+                    {
+                        Console.WriteLine("Close!");
+                        var ip = socket.ConnectionInfo.ClientIpAddress;
+                        string playerID = getPlayIDByWSProxy(socket);
+                        if (!string.IsNullOrEmpty(playerID))
+                        {
+                            this.handlePlayerDisconnect(playerID);
+                        }
+                    };
+                    socket.OnMessage = (message) =>
+                    {
+                        WebSocketObjects.WebSocketMessage messageObj = CommonMethods.ReadObjectFromString<WebSocketObjects.WebSocketMessage>(message);
+                        if (messageObj == null)
+                        {
+                            log.Debug(string.Format("failed to unmarshal WS message: {0}", message));
+                            return;
+                        }
+
+                        var playerProxy = new PlayerWSImpl(socket);
+
+                        if (messageObj.messageType == WebSocketObjects.WebSocketMessageType_PlayerEnterHall)
+                        {
+                            if (this.PlayersProxy.ContainsKey(messageObj.playerID))
+                            {
+                                string clientIP = socket.ConnectionInfo.ClientIpAddress;
+                                if (this.PlayerToIP.ContainsValue(clientIP))
+                                {
+                                    playerProxy.NotifyMessage(new string[] { "之前非正常退出", "请重启游戏后再尝试进入大厅" });
+                                    this.handlePlayerDisconnect(messageObj.playerID);
+                                }
+                                else
+                                {
+                                    playerProxy.NotifyMessage(new string[] { "玩家昵称重名", "请更改昵称后重试" });
+                                }
+                                return;
+                            }
+                            this.PlayersProxy.Add(messageObj.playerID, playerProxy);
+                        }
+
+                        WSMessageHandler(messageObj.messageType, messageObj.playerID, messageObj.content);
+                    };
+                });
+            });
+            threadStartHostWSS.Start();
 
             // setup logger
             AppDomain currentDomain = default(AppDomain);
